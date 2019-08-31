@@ -1,0 +1,63 @@
+---
+Resources:
+  InstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: CFSecurityGroup
+      GroupDescription: CFSecurityGroup
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 8080
+        ToPort: 8080
+        CidrIp: 0.0.0.0/0
+      VpcId: "vpc-b40210cd"
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancing::LoadBalancer
+    Properties:
+      AvailabilityZones:
+      - "us-west-2a"
+      ConnectionSettings:
+        IdleTimeout: 300
+      HealthCheck:
+        HealthyThreshold: 3
+        Interval: 30
+        Target: "HTTP:8080/"
+        Timeout: 5
+        UnhealthyThreshold: 5
+      Listeners:
+      - LoadBalancerPort: '8080'
+        InstancePort: '8080'
+        Protocol: HTTP
+      LoadBalancerName: CFTELB
+      SecurityGroups:
+      - Ref: "InstanceSecurityGroup"
+  LaunchConfig:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      KeyName: "webserver"
+      ImageId: "ami-28e07e50"
+      SecurityGroups:
+        - Ref: "InstanceSecurityGroup"
+      InstanceType: "t2.micro"
+      UserData:
+        Fn::Base64: |
+           #!/bin/bash
+           yum install wget git -y
+           git clone https://github.com/nottsgeek/jenkins_config.git
+           wget https://rpmfind.net/linux/centos/7.5.1804/extras/x86_64/Packages/ansible-2.4.2.0-2.el7.noarch.rpm
+           rpm -ivh ansible-2.4.2.0-2.el7.noarch.rpm --nodeps
+           ansible-playbook jenkins_config/jenkins-deployer.yml
+  AutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      AutoScalingGroupName: WebApp
+      AvailabilityZones:
+      - "us-west-2a"
+      DesiredCapacity: 1
+      HealthCheckGracePeriod: 10
+      LaunchConfigurationName:
+        Ref: "LaunchConfig"
+      LoadBalancerNames:
+      - Ref: "LoadBalancer"
+      MaxSize: 1
+      MinSize: 1
